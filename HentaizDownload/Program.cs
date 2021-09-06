@@ -108,6 +108,7 @@ namespace HentaizDownload
     static string GetFrameFromUrl(string url)
     {
       using HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Get, url);
+      req.Headers.Add("Accept-Encoding", "deflate");
       req.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36");
       using HttpResponseMessage res = httpClient.Send(req, HttpCompletionOption.ResponseContentRead);
       string content = res.EnsureSuccessStatusCode().Content.ReadAsStringAsync().Result;
