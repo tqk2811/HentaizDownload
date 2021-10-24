@@ -11,11 +11,19 @@ namespace HentaizDownload
 {
   static class Program
   {
-    static readonly HttpClient httpClient = new HttpClient();
+    const string videoDomain = "logs.ocho.top";
+    static readonly HttpClient httpClient = new HttpClient(new HttpClientHandler()
+    {
+      //don't know http 403 on some computer, just try
+      UseProxy = false,
+      UseDefaultCredentials = true,
+      AutomaticDecompression = System.Net.DecompressionMethods.All,
+      UseCookies = false
+    });
     static readonly Regex regex_videoQuality = new Regex(@"\/\d+.m3u8", RegexOptions.Multiline);
     static readonly Regex regex_chunk = new Regex(@"^https:\/\/.+$", RegexOptions.Multiline);
     static readonly Regex regex_iframe = new Regex(@"<iframe.*?<\/iframe>");
-    static readonly Regex regex_frameId = new Regex("(?<=src=\\\"https:\\/\\/v.hentaiz.cc\\/play\\/).*?(?=\\\")");
+    static readonly Regex regex_frameUrl = new Regex("(?<=src=\\\").*?(?=\\\")");
     static readonly Regex regex_frameName = new Regex("(?<=title=\\\").*?(?=\\\")");
     static void Main(string[] args)
     {
@@ -31,19 +39,20 @@ namespace HentaizDownload
           continue;
         }
 
-        Match match_id = regex_frameId.Match(frame);
+        Match match_Url = regex_frameUrl.Match(frame);
         Match match_name = regex_frameName.Match(frame);
-        if(!match_id.Success || !match_name.Success)
+        if(!match_Url.Success || !match_name.Success)
         {
           Console.WriteLine("Không tìm được video id. Hoặc không sử dụng server hentaiz (có thể tải bằng idm)");
           continue;
         }
 
-        string id = match_id.Value;
+        Uri urlFrame = new Uri(match_Url.Value);
+        string id = urlFrame.Segments.Last();
         string name = match_name.Value;
         foreach(var c in Path.GetInvalidFileNameChars()) name = name.Replace(c, '_');
 
-        string main = DownloadData($"https://vapi.hentaiz.cc/segments/{id}/main.m3u8");
+        string main = DownloadData($"https://{videoDomain}/segments/{id}/main.m3u8");
         MatchCollection matches = regex_videoQuality.Matches(main);
         Console.WriteLine("Select Quality:");
         for (int i = 0; i < matches.Count; i++) Console.WriteLine($"{i} {matches[i].Value}");
@@ -51,8 +60,8 @@ namespace HentaizDownload
         int index = 0;
         while (!(int.TryParse(Console.ReadLine(), out index) && index >= 0 && index < matches.Count)) ;
 
-        string audio = DownloadData($"https://vapi.hentaiz.cc/segments/{id}/audio.m3u8");
-        string video = DownloadData($"https://vapi.hentaiz.cc/segments/{id}{matches[index].Value}");
+        string audio = DownloadData($"https://{videoDomain}/segments/{id}/audio.m3u8");
+        string video = DownloadData($"https://{videoDomain}/segments/{id}{matches[index].Value}");
 
         var videoUrls = regex_chunk.Matches(video).Select(x => x.Value);
         var audioUrls = regex_chunk.Matches(audio).Select(x => x.Value);
@@ -84,10 +93,13 @@ namespace HentaizDownload
 
     static async Task DownloadChunk(IEnumerable<string> urls, string saveName)
     {
+      int count = urls.Count();
       using FileStream fs = new FileStream(saveName, FileMode.Create, FileAccess.Write, FileShare.Read);
+      int i = 0;
       foreach(var url in urls)
       {
-        Console.WriteLine("Download:" + url);
+        i++;
+        Console.WriteLine($"Download: ({i}/{count}) {url}");
         using HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Get, url);
         AddHeader(req);
         using HttpResponseMessage res = await httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
@@ -99,7 +111,7 @@ namespace HentaizDownload
 
     static void AddHeader(HttpRequestMessage req)
     {
-      req.Headers.Add("Origin", "https://v.hentaiz.cc");
+      req.Headers.Add("Origin", "https://v.hentaiz.vip");
       req.Headers.Add("Accept-Encoding", "deflate");
       req.Headers.Add("Accept", "*/*");
       req.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36");
@@ -108,7 +120,8 @@ namespace HentaizDownload
     static string GetFrameFromUrl(string url)
     {
       using HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Get, url);
-      req.Headers.Add("Accept-Encoding", "deflate");
+      req.Headers.Add("Accept", "text/html");
+      req.Headers.Add("Accept-Encoding", "gzip, deflate");
       req.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36");
       using HttpResponseMessage res = httpClient.Send(req, HttpCompletionOption.ResponseContentRead);
       string content = res.EnsureSuccessStatusCode().Content.ReadAsStringAsync().Result;
