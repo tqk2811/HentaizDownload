@@ -20,6 +20,8 @@ namespace HentaizDownload
       AutomaticDecompression = System.Net.DecompressionMethods.All,
       UseCookies = false
     });
+    static readonly Regex api_domain = new Regex("baseURL:\"(.*?)\"");
+    static readonly Regex main_js = new Regex(@"/static/js/main\.[0-9a-f]+\.chunk\.js");
     //static readonly Regex regex_videoQuality = new Regex(@"\/\d+.m3u8", RegexOptions.Multiline);
     static readonly Regex regex_chunk = new Regex(@"^https:\/\/.+$", RegexOptions.Multiline);
     static readonly Regex regex_iframe = new Regex(@"<iframe.*?<\/iframe>");
@@ -77,7 +79,13 @@ namespace HentaizDownload
         foreach(var c in Path.GetInvalidFileNameChars()) name = name.Replace(c, '_');
 
         /////////////////
-        MasterPlayList masterPlaylistUrl = GetString<MasterPlayList>($"https://api.{urlFrame.Host}/player/{id}");
+        string frameContent = GetString(urlFrame.ToString());
+        Match match_mainjs = main_js.Match(frameContent);
+        string mainjs = GetString($"https://{urlFrame.Host}{match_mainjs.Value}");
+        Match match_baseUrl = api_domain.Match(mainjs);
+        string baseUrl = match_baseUrl.Groups[1].Value;
+
+        MasterPlayList masterPlaylistUrl = GetString<MasterPlayList>($"{baseUrl}/player/{id}");
         string playlist = GetString(masterPlaylistUrl.masterPlaylistUrl);
         MatchCollection matches = regex_url.Matches(playlist);
         var videos_url = matches.Where(x => !x.Groups[1].Value.Equals("0x0")).ToList();
